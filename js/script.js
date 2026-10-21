@@ -1,7 +1,13 @@
 "use strict";
 
+/* =====================================================================
+   Transposición interrumpida — lógica de cifrado + interfaz
+   ===================================================================== */
+
+// Alfabeto español usado para ordenar las letras de la clave.
 const ALFABETO_ES = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
 
+// Letras acentuadas / con diéresis que se ordenan como su letra base.
 const BASE_ORDEN = { "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "Ü": "U" };
 
 function aCaracteres(texto) {
@@ -13,19 +19,25 @@ function aCaracteres(texto) {
  * Normaliza el texto antes de cifrar o descifrar.
  *  - NFC: une "o" + tilde combinante en "ó" (mismo texto, un solo carácter).
  *  - Saltos de línea CRLF → LF (archivos de Windows).
- *  - Mayúsculas con reglas del español (ñ → Ñ, á → Á).
+ *  - NUEVO: solo se pasa a mayúsculas si conservarCaso es falso.
+ *    Si es verdadero, las minúsculas se respetan tal como se escribieron.
  *  - Si conservarSignos es falso, se dejan solo letras y dígitos
  *    (las letras acentuadas y la Ñ siguen siendo letras y se conservan).
  */
-function normalizarTexto(texto, conservarSignos) {
-  let t = texto.normalize("NFC").replace(/\r\n?/g, "\n").toLocaleUpperCase("es");
+function normalizarTexto(texto, conservarSignos, conservarCaso) {
+  let t = texto.normalize("NFC").replace(/\r\n?/g, "\n");
+  if (!conservarCaso) t = t.toLocaleUpperCase("es"); // NUEVO: mayúsculas opcionales
   if (!conservarSignos) {
     t = aCaracteres(t).filter(c => /[\p{L}\p{N}]/u.test(c)).join("");
   }
   return t;
 }
 
-/** Normaliza la clave y devuelve sus caracteres o un error legible. */
+/**
+ * Normaliza la clave y devuelve sus caracteres o un error legible.
+ * La clave SIEMPRE se pasa a mayúsculas, así que acepta minúsculas
+ * ("convenience" == "CONVENIENCE") sin cambiar el orden de las columnas.
+ */
 function validarClave(claveCruda) {
   const clave = claveCruda.normalize("NFC").trim().toLocaleUpperCase("es");
   if (clave.length === 0) return { error: "Ingrese una clave." };
@@ -129,12 +141,8 @@ function cifrarTransposicionInterrumpida(texto, letrasClave) {
 }
 
 /* ---------------------------------------------------------------------
-   Descifrado (inverso exacto de la misma estructura)
-   1. Con la longitud del criptograma se reconstruye qué celdas estaban
-      ocupadas (misma forma interrumpida, mismo final incompleto).
-   2. Se rellenan las columnas en el orden de la clave, de arriba abajo,
-      saltando huecos.
-   3. Se lee la matriz fila por fila.
+   Descifrado (inverso exacto de la misma estructura) — DESACTIVADO
+   Se deja comentado porque el HTML actual no tiene botón "Descifrar".
    --------------------------------------------------------------------- */
 
 /*
@@ -171,7 +179,7 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
 
   /* ---------- Estado de la aplicación ---------- */
   const estado = {
-    modo: null,          // "cifrar" | "descifrar"
+    modo: null,          // "cifrar"
     resultado: "",
     detalle: null,       // { numeros, matriz, lecturas, resultado }
     letrasClave: null,
@@ -179,23 +187,22 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
   };
 
   const $ = id => document.getElementById(id);
+
+  // Solo se referencian elementos que EXISTEN en index.html.
   const el = {
     entrada: $("entrada"), salida: $("salida"), clave: $("clave"), conservar: $("conservar"),
+    mayusculas: $("mayusculas"), // NUEVO: casilla de mayúsculas/minúsculas
     archivo: $("archivo"), nombreArchivo: $("nombreArchivo"), status: $("status"),
-    cntEntrada: $("cntEntrada"), cntSalida: $("cntSalida"), lblEntrada: $("lblEntrada"), lblSalida: $("lblSalida"),
-    btnCifrar: $("btnCifrar"), btnDescifrar: $("btnDescifrar"), btnDescargar: $("btnDescargar"),
-    btnUsar: $("btnUsar")
+    cntEntrada: $("cntEntrada"), cntSalida: $("cntSalida"),
+    lblEntrada: $("lblEntrada"), lblSalida: $("lblSalida"),
+    btnCifrar: $("btnCifrar"), btnDescargar: $("btnDescargar")
   };
 
   /* ---------- Utilidades de presentación ---------- */
   const contar = t => Array.from(t).length;
   const plural = n => n === 1 ? "1 carácter" : `${n.toLocaleString("es")} caracteres`;
-  function visible(ch) {
-    if (ch === " ") return "␣";
-    if (ch === "\n") return "↵";
-    if (ch === "\t") return "⇥";
-    return ch;
-  }
+
+  // Crea un elemento DOM con atributos e hijos.
   function h(tag, attrs, ...hijos) {
     const n = document.createElement(tag);
     if (attrs) for (const [k, v] of Object.entries(attrs)) {
@@ -204,10 +211,13 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
     for (const c of hijos) if (c != null) n.append(c);
     return n;
   }
+
+  // Muestra un mensaje de estado (tipo: "ok" | "error" | "info").
   function mensaje(tipo, texto) {
     el.status.replaceChildren();
     if (texto) el.status.append(h("div", { class: "msg " + tipo, text: texto }));
   }
+
   function actualizarContadores() {
     el.cntEntrada.textContent = plural(contar(el.entrada.value));
     el.cntSalida.textContent = el.salida.value ? plural(contar(el.salida.value)) : "—";
@@ -220,7 +230,8 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
     }
     const v = validarClave(el.clave.value);
     if (v.error) return v;
-    const texto = normalizarTexto(el.entrada.value, el.conservar.checked);
+    // NUEVO: se pasa el estado de la casilla "Conservar mayúsculas y minúsculas"
+    const texto = normalizarTexto(el.entrada.value, el.conservar.checked, el.mayusculas.checked);
     if (texto.length === 0) {
       return { error: "Después de quitar espacios y signos no queda ningún carácter. Active \"Conservar espacios y signos\"." };
     }
@@ -228,38 +239,26 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
   }
 
   /* ---------- Acciones ---------- */
-  function ejecutar(modo) {
+  function ejecutar() {
     const v = validarEntradas();
     if (v.error) {
-      mensaje("error", modo === "descifrar" ? v.error.replace("para cifrar", "para descifrar") : v.error);
+      mensaje("error", v.error);
       if (/clave/i.test(v.error)) el.clave.focus(); else el.entrada.focus();
       return;
     }
-    const det = modo === "cifrar"
-      ? cifrarTransposicionInterrumpida(v.texto, v.letras)
-      : descifrarTransposicionInterrumpida(v.texto, v.letras);
 
-    Object.assign(estado, { modo, resultado: det.resultado, detalle: det, letrasClave: v.letras, textoNormalizado: v.texto });
+    const det = cifrarTransposicionInterrumpida(v.texto, v.letras);
+
+    Object.assign(estado, {
+      modo: "cifrar", resultado: det.resultado, detalle: det,
+      letrasClave: v.letras, textoNormalizado: v.texto
+    });
 
     el.salida.value = det.resultado;
-    el.lblSalida.textContent = modo === "cifrar" ? "Texto cifrado" : "Texto descifrado";
-    el.btnDescargar.disabled = false;
-    el.btnUsar.disabled = false;
+    el.lblSalida.textContent = "Texto cifrado";
+    el.btnDescargar.disabled = false; // habilita la descarga
     actualizarContadores();
-    mensaje("ok", modo === "cifrar"
-      ? `Texto cifrado: ${plural(contar(det.resultado))} transpuestos con la clave ${v.clave}.`
-      : `Texto descifrado: ${plural(contar(det.resultado))} reubicados con la clave ${v.clave}.`);
-  }
-
-  function usarResultado() {
-    if (!estado.resultado) return;
-    el.entrada.value = estado.resultado;
-    el.lblEntrada.textContent = estado.modo === "cifrar" ? "Texto cifrado (entrada)" : "Texto plano";
-    el.entrada.placeholder = "Escriba aquí el texto que desea cifrar...";
-    actualizarContadores();
-    mensaje("info", estado.modo === "cifrar"
-      ? "El texto cifrado está ahora en la entrada. Presione Descifrar con la misma clave para recuperar el mensaje."
-      : "El texto descifrado está ahora en la entrada.");
+    mensaje("ok", `Texto cifrado: ${plural(contar(det.resultado))} transpuestos con la clave ${v.clave}.`);
   }
 
   /* ---------- Carga de archivo .txt (UTF-8, local) ---------- */
@@ -273,7 +272,7 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
     }
     const lector = new FileReader();
     lector.onload = () => {
-      const contenido = String(lector.result).replace(/^﻿/, ""); // quita BOM si existe
+      const contenido = String(lector.result).replace(/^\uFEFF/, ""); // quita BOM si existe
       el.nombreArchivo.textContent = archivo.name;
       if (contenido.length === 0) {
         mensaje("error", "El archivo está vacío.");
@@ -284,7 +283,7 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
       el.lblEntrada.textContent = "Texto plano";
       actualizarContadores();
       mensaje("info", `Archivo «${archivo.name}» cargado (${plural(contar(contenido))}). Presione Cifrar para procesarlo.`);
-      evento.target.value = "";
+      evento.target.value = ""; // permite volver a cargar el mismo archivo
     };
     lector.onerror = () => mensaje("error", `No se pudo leer «${archivo.name}».`);
     lector.readAsText(archivo, "UTF-8");
@@ -293,7 +292,7 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
   /* ---------- Descarga (.txt UTF-8) ---------- */
   function descargar() {
     if (!estado.resultado) { mensaje("error", "Todavía no hay resultado para descargar."); return; }
-    const nombre = estado.modo === "descifrar" ? "texto_descifrado.txt" : "texto_cifrado.txt";
+    const nombre = "texto_cifrado.txt";
     const blob = new Blob([estado.resultado], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = h("a", { href: url, download: nombre });
@@ -305,13 +304,11 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
   }
 
   /* ---------- Eventos ---------- */
-  el.btnCifrar.addEventListener("click", () => ejecutar("cifrar"));
-  el.btnDescifrar.addEventListener("click", () => ejecutar("descifrar"));
+  el.btnCifrar.addEventListener("click", ejecutar);
   el.btnDescargar.addEventListener("click", descargar);
-  el.btnUsar.addEventListener("click", usarResultado);
   el.archivo.addEventListener("change", cargarArchivo);
   el.entrada.addEventListener("input", actualizarContadores);
-  el.clave.addEventListener("keydown", e => { if (e.key === "Enter") ejecutar("cifrar"); });
+  el.clave.addEventListener("keydown", e => { if (e.key === "Enter") ejecutar(); });
 
   actualizarContadores();
 })();
