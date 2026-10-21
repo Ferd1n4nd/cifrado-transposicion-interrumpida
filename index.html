@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transposición Interrumpida</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,500;7..72,650&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Transposición interrumpida, <em>variante de Luigi Sacco</em></h1>
+    </div>
+  </header>
+
+  <section class="io" aria-label="Texto de entrada y salida">
+    <div class="panel">
+      <div class="panel-head">
+        <h2><label for="entrada" id="lblEntrada">Texto plano</label></h2>
+        <span class="count" id="cntEntrada">0 caracteres</span>
+      </div>
+      <textarea id="entrada" spellcheck="false" placeholder="Texto a cifrar..."></textarea>
+      <div class="filerow">
+        <label class="btn" for="archivo">Cargar archivo .txt
+          <input type="file" id="archivo" accept=".txt,text/plain">
+        </label>
+        <span class="filename" id="nombreArchivo">Ningún archivo seleccionado</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2><label for="salida" id="lblSalida">Texto cifrado</label></h2>
+        <span class="count" id="cntSalida">—</span>
+      </div>
+      <textarea id="salida" readonly spellcheck="false" placeholder="Texto cifrado..."></textarea>
+      <div class="outrow">
+        <button type="button" id="btnDescargar" disabled>Descargar .txt</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="keybar" aria-label="Clave y acciones">
+    <div class="field">
+      <label for="clave">Clave</label>
+      <input type="text" id="clave" autocomplete="off" spellcheck="false" placeholder="CONVENIENCE">
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="conservar" checked>
+        <span>Conservar espacios y signos<small>Espacios, puntuación, ¿ ? ¡ ! y saltos de línea se transponen como cualquier carácter.</small></span>
+      </label>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="btnCifrar">Cifrar</button>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </section>
+</div>
+
+<script src="js/script.js"></script>
+</body>
+</html>
