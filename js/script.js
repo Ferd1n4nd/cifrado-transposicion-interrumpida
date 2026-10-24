@@ -4,11 +4,8 @@
    Transposición interrumpida — lógica de cifrado + interfaz
    ===================================================================== */
 
-// Alfabeto español usado para ordenar las letras de la clave.
-const ALFABETO_ES = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
-
-// Letras acentuadas / con diéresis que se ordenan como su letra base.
-const BASE_ORDEN = { "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "Ü": "U" };
+// Alfabeto inglés (26 letras) usado para validar y ordenar la clave.
+const ALFABETO = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 function aCaracteres(texto) {
   // Array.from separa por punto de código (no por unidad UTF-16).
@@ -16,17 +13,18 @@ function aCaracteres(texto) {
 }
 
 /**
- * Normaliza el texto antes de cifrar o descifrar.
+ * Normaliza el texto antes de cifrar.
  *  - NFC: une "o" + tilde combinante en "ó" (mismo texto, un solo carácter).
  *  - Saltos de línea CRLF → LF (archivos de Windows).
- *  - NUEVO: solo se pasa a mayúsculas si conservarCaso es falso.
+ *  - Solo se pasa a mayúsculas si conservarCaso es falso.
  *    Si es verdadero, las minúsculas se respetan tal como se escribieron.
  *  - Si conservarSignos es falso, se dejan solo letras y dígitos
- *    (las letras acentuadas y la Ñ siguen siendo letras y se conservan).
+ *    (cualquier letra Unicode se conserva: Ñ, tildes, griego, cirílico, etc.).
+ * El texto claro admite cualquier carácter UTF-8.
  */
 function normalizarTexto(texto, conservarSignos, conservarCaso) {
   let t = texto.normalize("NFC").replace(/\r\n?/g, "\n");
-  if (!conservarCaso) t = t.toLocaleUpperCase("es"); // NUEVO: mayúsculas opcionales
+  if (!conservarCaso) t = t.toLocaleUpperCase("es");
   if (!conservarSignos) {
     t = aCaracteres(t).filter(c => /[\p{L}\p{N}]/u.test(c)).join("");
   }
@@ -34,27 +32,35 @@ function normalizarTexto(texto, conservarSignos, conservarCaso) {
 }
 
 /**
- * Normaliza la clave y devuelve sus caracteres o un error legible.
- * La clave SIEMPRE se pasa a mayúsculas, así que acepta minúsculas
- * ("convenience" == "CONVENIENCE") sin cambiar el orden de las columnas.
+ * Valida la clave. SOLO acepta las 26 letras del alfabeto inglés (A–Z, a–z).
+ * Cualquier otro carácter (espacios, números, signos, Ñ, tildes, Ü, etc.)
+ * produce un error que lista los caracteres inválidos.
+ * La clave se pasa a mayúsculas, así que "convenience" == "CONVENIENCE".
  */
 function validarClave(claveCruda) {
-  const clave = claveCruda.normalize("NFC").trim().toLocaleUpperCase("es");
-  if (clave.length === 0) return { error: "Ingrese una clave." };
-  const letras = aCaracteres(clave);
+  if (claveCruda.length === 0) return { error: "Ingrese una clave." };
+
+  // Se valida el texto tal como fue escrito (sin trim ni normalización),
+  // para que un espacio o un carácter raro nunca pase desapercibido.
   const invalidos = [];
-  for (const c of letras) {
-    const base = BASE_ORDEN[c] || c;
-    if (!ALFABETO_ES.includes(base) && !invalidos.includes(c)) invalidos.push(c);
+  for (const c of aCaracteres(claveCruda)) {
+    if (!/^[A-Za-z]$/.test(c) && !invalidos.includes(c)) invalidos.push(c);
   }
   if (invalidos.length) {
-    const lista = invalidos.map(c => (c === " " ? "espacio" : `«${c}»`)).join(", ");
+    const lista = invalidos.map(c => {
+      if (c === " ") return "espacio";
+      if (c === "\n" || c === "\r") return "salto de línea";
+      if (c === "\t") return "tabulación";
+      return `«${c}»`;
+    }).join(", ");
     return {
       error: `La clave contiene caracteres no válidos: ${lista}. ` +
-             "Use solo letras del alfabeto español (A–Z, Ñ, vocales con tilde o Ü), sin espacios, números ni signos."
+             "Use solo las 26 letras del alfabeto inglés (A–Z), sin espacios, números, signos, Ñ ni vocales con tilde."
     };
   }
-  return { clave, letras };
+
+  const clave = claveCruda.toUpperCase();
+  return { clave, letras: aCaracteres(clave) };
 }
 
 /* ---------------------------------------------------------------------
@@ -68,8 +74,8 @@ function validarClave(claveCruda) {
 function generarOrdenClave(letras) {
   const indices = letras.map((_, i) => i);
   indices.sort((a, b) => {
-    const pa = ALFABETO_ES.indexOf(BASE_ORDEN[letras[a]] || letras[a]);
-    const pb = ALFABETO_ES.indexOf(BASE_ORDEN[letras[b]] || letras[b]);
+    const pa = ALFABETO.indexOf(letras[a]);
+    const pb = ALFABETO.indexOf(letras[b]);
     return pa - pb || a - b; // empate: gana la que está más a la izquierda
   });
   const numeros = new Array(letras.length);
@@ -191,7 +197,7 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
   // Solo se referencian elementos que EXISTEN en index.html.
   const el = {
     entrada: $("entrada"), salida: $("salida"), clave: $("clave"), conservar: $("conservar"),
-    mayusculas: $("mayusculas"), // NUEVO: casilla de mayúsculas/minúsculas
+    mayusculas: $("mayusculas"), // casilla "Conservar mayúsculas y minúsculas"
     archivo: $("archivo"), nombreArchivo: $("nombreArchivo"), status: $("status"),
     cntEntrada: $("cntEntrada"), cntSalida: $("cntSalida"),
     lblEntrada: $("lblEntrada"), lblSalida: $("lblSalida"),
@@ -230,7 +236,6 @@ function descifrarTransposicionInterrumpida(cifrado, letrasClave) {
     }
     const v = validarClave(el.clave.value);
     if (v.error) return v;
-    // NUEVO: se pasa el estado de la casilla "Conservar mayúsculas y minúsculas"
     const texto = normalizarTexto(el.entrada.value, el.conservar.checked, el.mayusculas.checked);
     if (texto.length === 0) {
       return { error: "Después de quitar espacios y signos no queda ningún carácter. Active \"Conservar espacios y signos\"." };
